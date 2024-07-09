@@ -1,26 +1,34 @@
 package com.codewithkael.webrtcscreenshare.webrtc
 
-import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioRecord
-import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
-import androidx.core.app.ActivityCompat
 import com.codewithkael.webrtcscreenshare.utils.DataModel
 import com.codewithkael.webrtcscreenshare.utils.DataModelType
 import com.google.gson.Gson
-import org.webrtc.*
+import org.webrtc.AudioSource
+import org.webrtc.AudioTrack
+import org.webrtc.DefaultVideoDecoderFactory
+import org.webrtc.DefaultVideoEncoderFactory
+import org.webrtc.EglBase
+import org.webrtc.IceCandidate
+import org.webrtc.MediaConstraints
+import org.webrtc.MediaStream
+import org.webrtc.PeerConnection
 import org.webrtc.PeerConnection.Observer
+import org.webrtc.PeerConnectionFactory
+import org.webrtc.ScreenCapturerAndroid
+import org.webrtc.SessionDescription
+import org.webrtc.SurfaceTextureHelper
+import org.webrtc.SurfaceViewRenderer
+import org.webrtc.VideoCapturer
+import org.webrtc.VideoTrack
 import org.webrtc.audio.AudioDeviceModule
 import org.webrtc.audio.JavaAudioDeviceModule
-import java.nio.ByteBuffer
 import javax.inject.Inject
 
 class WebrtcClient @Inject constructor(
