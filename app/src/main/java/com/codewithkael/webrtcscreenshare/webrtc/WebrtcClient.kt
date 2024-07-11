@@ -1,8 +1,13 @@
 package com.codewithkael.webrtcscreenshare.webrtc
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.util.DisplayMetrics
 import android.util.Log
@@ -29,6 +34,7 @@ import org.webrtc.VideoCapturer
 import org.webrtc.VideoTrack
 import org.webrtc.audio.AudioDeviceModule
 import org.webrtc.audio.JavaAudioDeviceModule
+import java.nio.ByteBuffer
 import javax.inject.Inject
 
 class WebrtcClient @Inject constructor(
@@ -46,11 +52,11 @@ class WebrtcClient @Inject constructor(
     private val peerConnectionFactory by lazy { createPeerConnectionFactory() }
     private val mediaConstraint = MediaConstraints().apply {
         mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
+        mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
     }
     private var audioSource: AudioSource? = null
     private var localAudioTrack: AudioTrack? = null
     private lateinit var audioDeviceModule: AudioDeviceModule
-    private lateinit var audioRecord: AudioRecord
     private var isRecording = false
     private lateinit var recordingThread: Thread
     private val iceServer = listOf(
@@ -63,10 +69,11 @@ class WebrtcClient @Inject constructor(
     private val localVideoSource by lazy { peerConnectionFactory.createVideoSource(false) }
     private val localTrackId="local_track"
     private val localStreamId="local_stream"
+    private val audioTrackId="audio_track"
     private var localVideoTrack:VideoTrack?=null
     private var localStream: MediaStream?=null
 
-    
+
     init {
         initPeerConnectionFactory(context)
     }
@@ -74,7 +81,6 @@ class WebrtcClient @Inject constructor(
     fun initializeWebrtcClient(
         username: String, view: SurfaceViewRenderer, observer: Observer
     ) {
-
         this.username = username
         this.observer = observer
         peerConnection = createPeerConnection(observer)
@@ -116,79 +122,55 @@ class WebrtcClient @Inject constructor(
         localStream = peerConnectionFactory.createLocalMediaStream(localStreamId)
         localStream?.addTrack(localVideoTrack)
 
-        audioDeviceModule = JavaAudioDeviceModule.builder(context)
-            .createAudioDeviceModule() as AudioDeviceModule
-
-        val audioConstraints = MediaConstraints()
-
-        audioSource = peerConnectionFactory.createAudioSource(audioConstraints)
-        localAudioTrack = peerConnectionFactory.createAudioTrack("101", audioSource)
-
-//        // check size audio
-//        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-//        val sampleRate = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)
-//        val framesPerBuffer = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)
-//        val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-//        val channelConfig = AudioFormat.CHANNEL_IN_MONO
-//        val bufferSizeInBytes = AudioRecord.getMinBufferSize(sampleRate.toInt(), channelConfig, audioFormat)
-//
-//
-//        if (ActivityCompat.checkSelfPermission(
-//                context,
-//                Manifest.permission.RECORD_AUDIO
-//            ) != PackageManager.PERMISSION_GRANTED
-//        ) {
-//            // TODO: Consider calling
-//            //    ActivityCompat#requestPermissions
-//            // here to request the missing permissions, and then overriding
-//            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-//            //                                          int[] grantResults)
-//            // to handle the case where the user grants the permission. See the documentation
-//            // for ActivityCompat#requestPermissions for more details.
-//            return
-//        }
-//        audioRecord = AudioRecord(
-//            MediaRecorder.AudioSource.MIC,
-//            sampleRate.toInt(),
-//            channelConfig,
-//            audioFormat,
-//            bufferSizeInBytes
-//        )
-//        startAudioRecording()
-        localStream?.addTrack(localAudioTrack)
-        Log.i("TAG", "startScreenCapturing: ${localStream.toString()}")
+        startAudioRecording()
 
         peerConnection?.addStream(localStream)
 
     }
 
-//    private fun startAudioRecording() {
-//        isRecording = true
-//        recordingThread = Thread {
-//            val buffer = ByteBuffer.allocateDirect(audioRecord.bufferSizeInFrames * 2) // 2 bytes per sample
-//            audioRecord.startRecording()
-//
-//            // Tạo một JavaAudioDeviceModule.AudioTrackJniInterface để truy cập native audio sink
-//            val audioDeviceModule = JavaAudioDeviceModule.builder(context).createAudioDeviceModule() as JavaAudioDeviceModule
-//            val audioTrackJni = audioDeviceModule.nativeAudioDeviceModulePointer
-//
-//            while (isRecording) {
-//                val bytesRead = audioRecord.read(buffer, buffer.capacity())
-//                if (bytesRead > 0) {
-//                    buffer.rewind()
-//                    val bytes = ByteArray(bytesRead)
-//                    buffer.get(bytes)
-//                    Log.d("TAG", "startAudioRecording: $bytes")
-//
-//                    // Ghi dữ liệu vào native audio sink
-//                    audioTrackJni.writeAudioData(bytes, bytesRead)
-//                }
-//                buffer.clear()
-//            }
-//            audioRecord.stop()
-//        }
-//        recordingThread.start()
-//    }
+    @SuppressLint("MissingPermission")
+    private fun startAudioRecording() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION // Sử dụng chế độ thoại
+
+        val minBufferSize = AudioRecord.getMinBufferSize(
+            44100,  // Tần số lấy mẫu
+            AudioFormat.CHANNEL_IN_MONO,  // Kênh âm thanh
+            AudioFormat.ENCODING_PCM_16BIT // Độ sâu bit
+        )
+        val audioDeviceModule = JavaAudioDeviceModule.builder(context).createAudioDeviceModule() as JavaAudioDeviceModule
+        val audioTrackJni = audioDeviceModule.nativeAudioDeviceModulePointer
+        val audioRecord = AudioRecord(
+            MediaRecorder.AudioSource.MIC,
+            44100,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+            minBufferSize
+        )
+        audioSource = peerConnectionFactory.createAudioSource(MediaConstraints())
+        localAudioTrack = peerConnectionFactory.createAudioTrack(audioTrackId, audioSource)
+
+        isRecording = true
+        recordingThread = Thread {
+            val buffer = ByteBuffer.allocateDirect(minBufferSize)
+            audioRecord.startRecording()
+            while (isRecording) {
+                val bytesRead = audioRecord.read(buffer, minBufferSize)
+                if (bytesRead > 0) {
+                    buffer.rewind()
+                    val bytes = ByteArray(bytesRead)
+                    buffer.get(bytes)
+                    localAudioTrack?.setEnabled(true)
+                    localAudioTrack?.setVolume(1.0)
+                    Log.i("AudioRecorder", "Đã ghi âm: $bytesRead")
+                }
+            }
+            audioRecord.stop()
+        }
+        localStream?.addTrack(localAudioTrack)
+
+        recordingThread.start()
+    }
 
 
     private fun createScreenCapturer(): VideoCapturer {
@@ -209,15 +191,15 @@ class WebrtcClient @Inject constructor(
 
     private fun createPeerConnectionFactory(): PeerConnectionFactory {
         return PeerConnectionFactory.builder().setVideoDecoderFactory(
-                DefaultVideoDecoderFactory(eglBaseContext)
-            ).setVideoEncoderFactory(
-                DefaultVideoEncoderFactory(
-                    eglBaseContext, true, true
-                )
-            ).setOptions(PeerConnectionFactory.Options().apply {
-                disableEncryption = false
-                disableNetworkMonitor = false
-            }).createPeerConnectionFactory()
+            DefaultVideoDecoderFactory(eglBaseContext)
+        ).setVideoEncoderFactory(
+            DefaultVideoEncoderFactory(
+                eglBaseContext, true, true
+            )
+        ).setOptions(PeerConnectionFactory.Options().apply {
+            disableEncryption = false
+            disableNetworkMonitor = false
+        }).createPeerConnectionFactory()
     }
 
     private fun createPeerConnection(observer: Observer): PeerConnection? {
@@ -287,6 +269,8 @@ class WebrtcClient @Inject constructor(
 
     fun closeConnection(){
         try {
+            isRecording = false
+            recordingThread.interrupt()
             screenCapturer?.stopCapture()
             screenCapturer?.dispose()
             localStream?.dispose()

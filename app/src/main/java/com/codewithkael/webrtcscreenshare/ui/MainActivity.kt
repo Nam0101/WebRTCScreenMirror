@@ -59,7 +59,7 @@ class MainActivity : AppCompatActivity(), MainRepository.Listener {
         webrtcServiceRepository.startIntent(username!!)
         views.requestBtn.setOnClickListener {
             startScreenCapture()
-            startAudioCapture()
+//            startAudioCapture()
             views.requestLayout.isVisible = false
         }
 
